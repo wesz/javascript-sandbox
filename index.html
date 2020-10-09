@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>JSANDBOX</title>
+		<script>
+			(function(context, document, window)
+			{
+				var $w = window;
+				var $d = document;
+				var $is = function(x, y) { return typeof x == y; };
+				var $undef = function(x) { return $is(x, 'undefined'); };
+				var $tag = function(x, cx) { return (cx || $d).getElementsByTagName(x); };
+				var $class = function(x, cx) { return (cx || $d).getElementsByClassName(x); };
+				var $id = function(x, cx) { return (cx || $d).getElementById(x); };
+				var $create = function(x, v) { var e = $d.createElement(/^\s*<t(h|r|d)/.test(x) ? 'table' : 'div'); e.innerHTML = x; e = e.children.length == 1 ? e.children[0] : e.children; if ( ! $undef(v)) $attr(e, v); return e; };
+				var $html = $tag('html')[0];
+				var $head = $tag('head')[0];
+				var $body = $tag('body')[0];
+				var _$ = {}; _$[/^\s*</] = $create; _$[/^\.[\w\-]+$/] = $class; _$[/^\w+$/] = $tag; _$[/^\#[\w\-]+$/] = $id;
+				var $ = function(x, cx) { if (x == $d) return [ $d ]; else if (x == $w) return [ $w ]; else if (x == 'body') return [ $d.body || $d.body.parentNode || $d.getElementsByTagName('body')[0] ]; if (x instanceof Array) return x; else if (x.nodeType && x.nodeType == 1) return [ x ]; x = x.replace(/\s*$/, '').replace(/^\s*/, ''); for (var k in _$) { var p = k.split('/'); if ((new RegExp(p[1], p[2])).test(x)) return Array.prototype.slice.call(_$[k](x.replace(/^(\.|\#)/, ''), cx)); } return Array.prototype.slice.call((cx || $d).querySelectorAll(x)); };
+				var $clone = function(x) { return x.cloneNode(true); };
+				var $css = function(x, k) { if ( ! $undef(k) && ! $is(k, 'string')) { for (var p in k) x.style[p] = k[p]; return; } var computed = (($w.getComputedStyle && $w.getComputedStyle(x, null)) || ($d.defaultView && $d.defaultView.getComputedStyle(x, '')) || x.currentStyle || x.style); if ($undef(k)) return computed; else if ($is(k, 'string')) return computed[k]; };
+				var $cssi = function(x) { var s = $d.createElement('style'); s.appendChild($d.createTextNode(x)); $head.appendChild(s); };
+				var $attr = function(x, k) { if ($is(k, 'string')) return x.getAttribute(k); else for (var p in k) x.setAttribute(p, k[p]); };
+				var $value = function(x) { if (x.tagName.toLowerCase() == 'select') return x.options[x.selectedIndex].hasAttribute('value') ? x.options[x.selectedIndex].value : x.options[x.selectedIndex].innerText; else return x.value; };
+				var $on = function(x, e, c, cx) { var lv = arguments.length == 4; var ev = e; var ex = x; var ec = c; if (lv) { ev = c; ex = e || x || $d; ec = function(ee) { var found, el = ee.target || ee.srcElement; while (el && el !== x) { var nodes = $(ex, el.parentNode || $d); var i = -1; while (nodes[++i] && nodes[i] != el); found = !! nodes[i]; if (found) break; el = el.parentElement; } if (found) { if (cx.call(el, ee) === false) ee.preventDefault(); ee.stopPropagation(); } }; } if (x.attachEvent) x.attachEvent('on' + ev, ec); else x.addEventListener(ev, ec); };
+				var $off = function(x, e, c) { if (x.detachEvent) x.detachEvent('on' + e, c); else x.removeEventListener(e, c); };
+				var $trigger = function(e, cx) { var ev = $d.createEvent ? new Event(event) : $d.createEventObject(); if ($d.createEvent) cx.dispatchEvent(ev); else cx.fireEvent('on' + e, ev); };
+				var $bind = function(context, func) { return function() { return func.apply(context, arguments); }; }
+				var $ready = function(c) { if ($d.readyState != 'loading') c(); else if ($d.addEventListener) $d.addEventListener('DOMContentLoaded', c); else $d.attachEvent('onreadystatechange', function() { if ($d.readyState=='complete') c(); }); };
+
+				var Caret = function(textarea, context)
+				{
+					if ( ! (this instanceof Caret))
+					{
+						return new Caret(textarea, context);
+					}
+
+					this._background = null;
+					this._output = null;
+					this._autoheight = true;
+					this._tabsize = 4;
+					this._showwhitespace = true;
+					this._linenumbers = true;
+					this._html_highlight = true;
+					this._selection_start = null;
+					this._selection_end = null;
+					this._textarea = textarea;
+					this._errors = {};
+					this._timeout = null;
+					this._value = '';
+
+					return this;
+				};
+
+				Caret._global = {};
+
+				Caret.prototype.init = function()
+				{
+					var self = this;
+
+					var stylesheet =
+					[
+						'.caret-wrapper { display: block; position: relative; }',
+						'.caret { display: block; min-height: 0 !important; resize: none; width: 98%; }',
+						'.caret, .caret-output, .caret-background { border: none !important; outline: none !important; resize: none !important; border: none !important; margin: 0; padding: 0; text-indent: 0; font-family: monospace, monospace; line-height: 1.4 !important; letter-spacing: 0 !important; }',
+						'.caret.caret-line-numbers + .caret-output > span, .caret.caret-line-numbers + .caret-output + .caret-background { margin-left: 32px; }',
+						'.caret.caret-line-numbers, .caret.caret-line-numbers + .caret-background, .caret.caret-line-numbers + .caret-output + .caret-background { padding-left: 32px; margin-left: 0; }',
+						'.caret-output { counter-reset: caret-line-count; opacity: 1; }',
+						'.caret-output > span { padding: 0; line-height: 1; letter-spacing: 0 !important; font-size: inherit; font-family: inherit; color: transparent; }',
+						'.caret-output > span > .caret-keyword { color: transparent; background: #999; }',
+						'.caret-output > span > .caret-error { margin-left: 4px; background: #fdf2f5; color: #af1e2b; border: 1px solid #f8d5db; padding: 2px; }',
+						'.caret-output > span:before { content: counter(caret-line-count); counter-increment: caret-line-count; display: block; font-weight: bold; position: absolute; display: none; width: 28px; left: 0px; text-align: right; line-height: 1.4; font-size: inherit; font-family: monospace, monospace; color: #000; opacity: 0.3; }',
+						'.caret.caret-line-numbers + .caret-output > span:before { display: inline; }',
+						'.caret, .caret-output { outline: none; white-space: pre !important; tab-size: 4; -moz-tab-size: 4; -o-tab-size: 4; -webkit-tab-size: 4; background-color: transparent; z-index: 0;}',
+						'.caret-output { overflow: hidden; }',
+						'.caret-output > span { line-height: 1.4; }',
+						'.caret:focus, .caret-background:focus { outline: none; }',
+						'.caret-background { outline: none; display: block; position: absolute; top: 0; left: 0; z-index: -1; opacity: 0.3; }',
+						'.caret-output { display: block; z-index: -2; position: absolute; top: 0; left: 0; }'
+					];
+
+					$cssi(stylesheet.join("\n"));
+
+					if (this._linenumbers)
+					{
+						this._textarea.className += ' caret-line-numbers';
+					}
+
+					$attr(this._textarea, { spellcheck: false });
+					$css(this._textarea, { 'tab-size': this._tabsize });
+
+					this._textarea.insertAdjacentHTML('afterEnd', '<textarea class="caret caret-background" cols="80" rows="12"></textarea>');
+
+					if (this._linenumbers || this._html_highlight)
+					{
+						this._textarea.insertAdjacentHTML('afterEnd', '<div class="caret-output"></div>');
+					}
+
+					this._background = $class('caret-background')[0];
+					this._output = $class('caret-output')[0];
+
+					if (this._background != null)
+					{
+						$css(this._background, { 'tab-size': this._tabsize });
+					}
+
+					if (this._autoheight)
+					{
+						$css(this._textarea, { 'overflow-y': 'hidden' });
+
+						if (this._background != null)
+						{
+							$css(this._background, { 'overflow-y': 'hidden' });
+						}
+
+						if (this._output != null)
+						{
+							$css(this._output, { 'overflow-y': 'hidden' });
+						}
+					}
+
+					self._listen();
+					self._update();
+				};
+
+				Caret.prototype._process_background = function()
+				{
+					var content = this._textarea.value;
+
+					if (this._showwhitespace)
+					{
+						content = content
+							.replace(/ /g, "_")
+							.replace(/\t/g, "→".repeat(this._tabsize))
+							.replace(/\n/g, "↵\n")
+							.replace(/█\n/g, "█")
+							.replace(/█↵\n/g, "█\n")
+						.replace(/[a-zA-Z]/g, " ");
+					}
+
+					if (this._background != null)
+					{
+						this._background.value = content;
+
+						this._background.scrollTop = this._background.scrollTop - 0.00001;
+						this._background.scrollLeft = this._background.scrollLeft - 0.00001;
+					}
+
+					if (this._linenumbers || this._html_highlight)
+					{
+						$css(this._output,
+						{
+							'width': $css(this._textarea, 'width'),
+							'height': $css(this._textarea, 'height'),
+							'font-size': $css(this._textarea, 'font-size'),
+							'font-family': $css(this._textarea, 'font-family')
+						})
+
+						content = this._textarea.value;
+
+						if (this._html_highlight)
+						{
+							content = content.replace(/<((?=!\-\-)!\-\-[\s\S]*\-\-|((?=\?)\?[\s\S]*\?|((?=\/)\/[^.\-\d][^\/\]'"[!#$%&()*+,;<=>?@^`{|}~ ]*|[^.\-\d][^\/\]'"[!#$%&()*+,;<=>?@^`{|}~ ]*(?:\s[^.\-\d][^\/\]'"[!#$%&()*+,;<=>?@^`{|}~ ]*(?:=(?:"[^"]*"|'[^']*'|[^'"<\s]*))?)*)\s?\/?))>/gi,
+								function(match)
+								{
+									return '<span class="caret-keyword">' + match.replace(/./gm, function(s)
+									{
+										return "&#" + s.charCodeAt(0) + ";";
+									}) + '</span>';
+								}
+							);
+						} else
+						{
+							content = content.replace(/./gm, function(s)
+							{
+								return "&#" + s.charCodeAt(0) + ";";
+							});
+						}
+
+						this._output.innerHTML = (this._linenumbers ? '<span class="caret-line">' : '') + content.split("\n").join((this._linenumbers ? '&nbsp;</span><br /><span class="caret-line">' : '<br />')) + (this._linenumbers ? '&nbsp;</span>' : '');
+
+						var lines = this._output.getElementsByClassName('caret-line');
+
+						for (var k in this._errors)
+						{
+							if (k <= lines.length)
+							{
+								lines[k - 1].innerHTML += '<span class="caret-error">' + this._errors[k] + '</span>';
+							}
+						}
+
+						this._output.scrollTop = this._textarea.scrollTop - 0.00001;
+						this._output.scrollLeft = this._textarea.scrollLeft - 0.00001;
+					}
+				};
+
+				Caret.prototype._process_content = function()
+				{
+					var self = this;
+
+					this.save_selection();
+
+					this._textarea.innerHTML = this._textarea.value;
+
+					this.restore_selection();
+				};
+
+				Caret.prototype._update = function()
+				{
+					var self = this;
+
+					this._process_content();
+
+					if (this._autoheight)
+					{
+						var offset = this._textarea.offsetHeight - this._textarea.clientHeight;
+
+						this._textarea.style.height = 'auto';
+						this._textarea.style.height = this._textarea.scrollHeight + offset + 'px';
+
+						$class('caret-wrapper')[0].style.height = this._textarea.height;
+
+						if (this._background != null)
+						{
+							this._background.style.height = this._textarea.style.height;
+						}
+
+						if (this._output != null)
+						{
+							this._output.style.height = this._textarea.style.height;
+						}
+					}
+
+					this._process_background();
+
+					clearTimeout(this._timeout);
+
+					this._timeout = setTimeout( function()
+					{
+						if (self._value != self._textarea.value)
+						{
+							self.onupdate();
+							self._update();
+							self._value = self._textarea.value;
+						}
+					}, 500);
+				};
+
+				Caret.prototype._listen = function()
+				{
+					var self = this;
+
+					$on(this._textarea, 'scroll', function()
+					{
+						self._process_background()
+					});
+
+					$on(this._textarea, 'select', function()
+					{
+
+					});
+
+					$on(this._textarea, 'change', function()
+					{
+						self._update();
+					});
+
+					$on(this._textarea, 'mouseup', function()
+					{
+						self._update();
+					});
+
+					$on(this._textarea, 'mousedown', function()
+					{
+
+					});
+
+					$on(this._textarea, 'keyup', function(e)
+					{
+						self._update();
+					});
+
+					$on(this._textarea, 'keydown', function(e)
+					{
+						var key = e.keyCode || e.which;
+
+						if (key == 9)
+						{
+							e.preventDefault();
+
+							var s = this.selectionStart;
+
+							this.value = this.value.substring(0, this.selectionStart) + "\t" + this.value.substring(this.selectionEnd);
+							this.selectionEnd = s + 1;
+						}
+
+						self._update();
+					});
+				};
+
+				Caret.prototype.get_position = function()
+				{
+					return this._textarea.selectionStart;
+				};
+
+				Caret.prototype.set_position = function(position)
+				{
+					this._textarea.selectionStart	= position;
+					this._textarea.selectionEnd = position;
+					this._textarea.focus();
+				};
+
+				Caret.prototype.has_selection = function()
+				{
+					if (this._textarea.selectionStart == this._textarea.selectionEnd)
+					{
+						return false;
+					}
+
+					return true;
+				};
+
+				Caret.prototype.save_selection = function()
+				{
+					this._selection_start = this._textarea.selectionStart;
+					this._selection_end = this._textarea.selectionEnd;
+				};
+
+				Caret.prototype.restore_selection = function()
+				{
+					if (this._selection_start != this._selection_end)
+					{
+						this.select(this._selection_start, this._selection_end);
+					}
+				};
+
+				Caret.prototype.clear_selection = function()
+				{
+					if (this._selection_start != this._selection_end)
+					{
+						this._textarea.value = this._textarea.value.slice(0, this._selection_start) + this._textarea.value.slice(this._selection_end);
+					}
+				};
+
+				Caret.prototype.get_selection = function()
+				{
+					return this._textarea.value.substring(this._textarea.selectionStart, this._textarea.selectionEnd);
+				};
+
+				Caret.prototype.select = function(start, end)
+				{
+					this._textarea.selectionStart = start;
+					this._textarea.selectionEnd = end;
+					this._textarea.focus();
+				};
+
+				Caret.prototype.insert = function(text, offset_selection)
+				{
+					var pos = this.get_position();
+
+					this.save_selection();
+					this._textarea.value = [ this.slice(0, pos), text, this._textarea.value.slice(pos) ].join('');
+					this.set_position(pos + (offset_selection ? offset_selection : 0));
+				};
+
+				Caret.prototype.error = function(line, message)
+				{
+					if (line < 1)
+					{
+						line = 1;
+					}
+
+					this._errors[line] = message;
+					this._process_background();
+				};
+
+				Caret.prototype.clear_errors = function()
+				{
+					this._errors = {};
+					this._process_background();
+				};
+
+				window.Caret = Caret;
+				window.Caret.ready = $ready;
+				window.Caret.find = $;
+			})(this, document, window);
+
+			function sandbox(script, context, error_callback)
+			{
+				for (var k in window)
+				{
+					context[k] = undefined;
+				}
+
+				var interfaces = 'ANGLE_instanced_arrays,AbortController,AbortSignal,AbsoluteOrientationSensor,AbstractRange,AbstractWorker,Accelerometer,AddressErrors,AesCbcParams,AesCtrParams,AesGcmParams,AesKeyGenParams,AmbientLightSensor,AnalyserNode,Animation,AnimationEffect,AnimationEvent,AnimationPlaybackEvent,AnimationTimeline,ArrayBufferView,Attr,AudioBuffer,AudioBufferSourceNode,AudioConfiguration,AudioContext,AudioContextLatencyCategory,AudioContextOptions,AudioDestinationNode,AudioListener,AudioNode,AudioNodeOptions,AudioParam,AudioParamDescriptor,AudioParamMap,AudioProcessingEvent,AudioScheduledSourceNode,AudioTrack,AudioTrackList,AudioWorklet,AudioWorkletGlobalScope,AudioWorkletNode,AudioWorkletNodeOptions,AudioWorkletProcessor,AuthenticatorAssertionResponse,AuthenticatorAttestationResponse,AuthenticatorResponse,BaseAudioContext,BasicCardRequest,BasicCardResponse,BatteryManager,BeforeInstallPromptEvent,BeforeUnloadEvent,BiquadFilterNode,Blob,BlobBuilder,BlobEvent,Bluetooth,BluetoothAdvertisingData,BluetoothCharacteristicProperties,BluetoothDevice,BluetoothRemoteGATTCharacteristic,BluetoothRemoteGATTDescriptor,BluetoothRemoteGATTServer,BluetoothRemoteGATTService,Body,BroadcastChannel,BudgetService,BudgetState,BufferSource,ByteLengthQueuingStrategy,ByteString,CDATASection,CSS,CSSConditionRule,CSSCounterStyleRule,CSSGroupingRule,CSSImageValue,CSSKeyframeRule,CSSKeyframesRule,CSSKeywordValue,CSSMathProduct,CSSMathSum,CSSMathValue,CSSMediaRule,CSSNamespaceRule,CSSNumericValue,CSSOMString,CSSPageRule,CSSPositionValue,CSSPrimitiveValue,CSSPseudoElement,CSSRule,CSSRuleList,CSSStyleDeclaration,CSSStyleRule,CSSStyleSheet,CSSStyleValue,CSSSupportsRule,CSSUnitValue,CSSUnparsedValue,CSSValue,CSSValueList,CSSVariableReferenceValue,Cache,CacheStorage,CanvasCaptureMediaStreamTrack,CanvasGradient,CanvasImageSource,CanvasPattern,CanvasRenderingContext2D,CaretPosition,ChannelMergerNode,ChannelSplitterNode,CharacterData,ChildNode,Client,Clients,Clipboard,ClipboardEvent,ClipboardItem,CloseEvent,Comment,CompositionEvent,ConstantSourceNode,ConstrainBoolean,ConstrainDOMString,ConstrainDouble,ConstrainULong,ContactsManager,ContentIndex,ContentIndexEvent,ConvolverNode,CountQueuingStrategy,CrashReportBody,Credential,CredentialsContainer,Crypto,CryptoKey,CryptoKeyPair,CustomElementRegistry,CustomEvent,DOMConfiguration,DOMError,DOMException,DOMHighResTimeStamp,DOMImplementation,DOMImplementationList,DOMLocator,DOMMatrix,DOMMatrixReadOnly,DOMObject,DOMParser,DOMPoint,DOMPointInit,DOMPointReadOnly,DOMQuad,DOMRect,DOMRectReadOnly,DOMString,DOMStringList,DOMStringMap,DOMTimeStamp,DOMTokenList,DOMUserData,DataTransfer,DataTransferItem,DataTransferItemList,DedicatedWorkerGlobalScope,DelayNode,DeprecationReportBody,DeviceLightEvent,DeviceMotionEvent,DeviceMotionEventAcceleration,DeviceMotionEventRotationRate,DeviceOrientationEvent,DeviceProximityEvent,DirectoryEntrySync,DirectoryReaderSync,DisplayMediaStreamConstraints,Document,DocumentFragment,DocumentOrShadowRoot,DocumentTimeline,DocumentTouch,DocumentType,DoubleRange,DragEvent,DynamicsCompressorNode,EXT_blend_minmax,EXT_color_buffer_float,EXT_color_buffer_half_float,EXT_disjoint_timer_query,EXT_float_blend,EXT_frag_depth,EXT_sRGB,EXT_shader_texture_lod,EXT_texture_compression_bptc,EXT_texture_compression_rgtc,EXT_texture_filter_anisotropic,EcKeyGenParams,EcKeyImportParams,EcdhKeyDeriveParams,EcdsaParams,EffectTiming,Element,ElementCSSInlineStyle,ElementTraversal,ErrorEvent,Event,EventListener,EventSource,EventTarget,ExtendableEvent,ExtendableMessageEvent,FeaturePolicy,FederatedCredential,FetchEvent,File,FileEntrySync,FileError,FileException,FileList,FileReader,FileReaderSync,FileRequest,FileSystem,FileSystemDirectoryEntry,FileSystemDirectoryReader,FileSystemEntry,FileSystemEntrySync,FileSystemFileEntry,FileSystemFlags,FileSystemSync,FocusEvent,FontFace,FontFaceSet,FontFaceSetLoadEvent,FormData,FormDataEntryValue,FormDataEvent,FullscreenOptions,GainNode,Gamepad,GamepadButton,GamepadEvent,GamepadHapticActuator,GamepadPose,Geolocation,GeolocationCoordinates,GeolocationPosition,GeolocationPositionError,GeometryUtils,GestionEvent,NotifyAudioAvailableEvent,OES_element_index_uint,OES_fbo_render_mipmap,OES_standard_derivatives,OES_texture_float,OES_texture_float_linear,OES_texture_half_float,OES_texture_half_float_linear,OES_vertex_array_object,OVR_multiview2,OfflineAudioCompletionEvent,OfflineAudioContext,OffscreenCanvas,OrientationSensor,OscillatorNode,OverconstrainedError,PageTransitionEvent,PaintWorklet,PannerNode,ParentNode,PasswordCredential,Path2D,PayerErrors,PaymentAddress,PaymentCurrencyAmount,PaymentDetailsBase,PaymentDetailsUpdate,PaymentItem,PaymentMethodChangeEvent,PaymentRequest,PaymentRequestEvent,PaymentRequestUpdateEvent,PaymentResponse,PaymentValidationErrors,Pbkdf2Params,Performance,PerformanceEntry,PerformanceEventTiming,PerformanceFrameTiming,PerformanceLongTaskTiming,PerformanceMark,PerformanceMeasure,PerformanceNavigation,PerformanceNavigationTiming,PerformanceObserver,PerformanceObserverEntryList,PerformancePaintTiming,PerformanceResourceTiming,PerformanceServerTiming,PerformanceTiming,PeriodicSyncEvent,PeriodicSyncManager,PeriodicWave,PermissionStatus,Permissions,PhotoCapabilities,Plugin,PluginArray,Point,PointerEvent,PopStateEvent,PositionOptions,PositionSensorVRDevice,Presentation,PresentationAvailability,PresentationConnection,PresentationConnectionAvailableEvent,PresentationConnectionCloseEvent,PresentationConnectionList,PresentationReceiver,PresentationRequest,ProcessingInstruction,ProgressEvent,PromiseRejectionEvent,PublicKeyCredential,PublicKeyCredentialCreationOptions,PublicKeyCredentialRequestOptions,PushEvent,PushManager,PushMessageData,PushRegistrationManager,PushSubscription,RTCAnswerOptions,RTCCertificate,RTCConfiguration,RTCDTMFSender,RTCDTMFToneChangeEvent,RTCDataChannel,RTCDataChannelEvent,RTCDtlsTransport,RTCError,RTCErrorEvent,RTCIceCandidate,RTCIceCandidateInit,RTCIceCandidatePair,RTCIceCandidatePairStats,RTCIceCandidateStats,RTCIceCandidateType,RTCIceComponent,RTCIceCredentialType,RTCIceGathererState,RTCIceParameters,RTCIceProtocol,RTCIceRole,RTCIceServer,RTCIceTcpCandidateType,RTCIceTransport,RTCIceTransportState,RTCIdentityAssertion,RTCIdentityErrorEvent,RTCIdentityEvent,RTCInboundRtpStreamStats,RTCNetworkType,RTCOfferAnswerOptions,RTCOfferOptions,RTCOutboundRtpStreamStats,RTCPeerConnection,RTCPeerConnectionIceErrorEvent,RTCPeerConnectionIceEvent,RTCRemoteOutboundRtpStreamStats,RTCRtcpParameters,RTCRtpCapabilities,RTCRtpCodecCapability,RTCRtpCodecParameters,RTCRtpContributingSource,RTCRtpEncodingParameters,RTCRtpParameters,RTCRtpReceiveParameters,RTCRtpReceiver,RTCRtpSendParameters,RTCRtpSender,RTCRtpStreamStats,RTCRtpSynchronizationSource,RTCRtpTransceiver,RTCRtpTransceiverDirection,RTCRtpTransceiverInit,RTCSctpTransport,RTCSessionDescription,RTCSessionDescriptionCallback,RTCStats,RTCStatsIceCandidatePairState,RTCStatsReport,RTCStatsType,RTCTrackEvent,RTCTrackEventInit,RadioNodeList,Range,ReadableByteStreamController,ReadableStream,ReadableStreamBYOBReader,ReadableStreamBYOBRequest,ReadableStreamDefaultController,ReadableStreamDefaultReader,RelativeOrientationSensor,RenderingContext,Report,ReportingObserver,ReportingObserverOptions,Request,RequestDestination,ResizeObserver,ResizeObserverEntry,Response,RsaHashedImportParams,RsaHashedKeyGenParams,RsaOaepParams,RsaPssParams,SVGAElement,SVGAltGlyphDefElement,SVGAltGlyphElement,SVGAltGlyphItemElement,SVGAngle,SVGAnimateColorElement,SVGAnimateElement,SVGAnimateMotionElement,SVGAnimateTransformElement,SVGAnimatedAngle,SVGAnimatedBoolean,SVGAnimatedEnumeration,SVGAnimatedInteger,SVGAnimatedLength,SVGAnimatedLengthList,SVGAnimatedNumber,SVGAnimatedNumberList,SVGAnimatedPoints,SVGAnimatedPreserveAspectRatio,SVGAnimatedRect,SVGAnimatedString,SVGAnimatedTransformList,SVGAnimationElement,SVGCircleElement,SVGClipPathElement,SVGColorProfileElement,SVGComponentTransferFunctionElement,SVGCursorElement,SVGDefsElement,SVGDescElement,SVGElement,SVGEllipseElement,SVGEvent,SVGExternalResourcesRequired,SVGFEBlendElement,SVGFEColorMatrixElement,SVGFEComponentTransferElement,SVGFECompositeElement,SVGFEConvolveMatrixElement,SVGFEDiffuseLightingElement,SVGFEDisplacemetionEvent,NotifyAudioAvailableEvent,OES_element_index_uint,OES_fbo_render_mipmap,OES_standard_derivatives,OES_texture_float,OES_texture_float_linear,OES_texture_half_float,OES_texture_half_float_linear,OES_vertex_array_object,OVR_multiview2,OfflineAudioCompletionEvent,OfflineAudioContext,OffscreenCanvas,OrientationSensor,OscillatorNode,OverconstrainedError,PageTransitionEvent,PaintWorklet,PannerNode,ParentNode,PasswordCredential,Path2D,PayerErrors,PaymentAddress,PaymentCurrencyAmount,PaymentDetailsBase,PaymentDetailsUpdate,PaymentItem,PaymentMethodChangeEvent,PaymentRequest,PaymentRequestEvent,PaymentRequestUpdateEvent,PaymentResponse,PaymentValidationErrors,Pbkdf2Params,Performance,PerformanceEntry,PerformanceEventTiming,PerformanceFrameTiming,PerformanceLongTaskTiming,PerformanceMark,PerformanceMeasure,PerformanceNavigation,PerformanceNavigationTiming,PerformanceObserver,PerformanceObserverEntryList,PerformancePaintTiming,PerformanceResourceTiming,PerformanceServerTiming,PerformanceTiming,PeriodicSyncEvent,PeriodicSyncManager,PeriodicWave,PermissionStatus,Permissions,PhotoCapabilities,Plugin,PluginArray,Point,PointerEvent,PopStateEvent,PositionOptions,PositionSensorVRDevice,Presentation,PresentationAvailability,PresentationConnection,PresentationConnectionAvailableEvent,PresentationConnectionCloseEvent,PresentationConnectionList,PresentationReceiver,PresentationRequest,ProcessingInstruction,ProgressEvent,PromiseRejectionEvent,PublicKeyCredential,PublicKeyCredentialCreationOptions,PublicKeyCredentialRequestOptions,PushEvent,PushManager,PushMessageData,PushRegistrationManager,PushSubscription,RTCAnswerOptions,RTCCertificate,RTCConfiguration,RTCDTMFSender,RTCDTMFToneChangeEvent,RTCDataChannel,RTCDataChannelEvent,RTCDtlsTransport,RTCError,RTCErrorEvent,RTCIceCandidate,RTCIceCandidateInit,RTCIceCandidatePair,RTCIceCandidatePairStats,RTCIceCandidateStats,RTCIceCandidateType,RTCIceComponent,RTCIceCredentialType,RTCIceGathererState,RTCIceParameters,RTCIceProtocol,RTCIceRole,RTCIceServer,RTCIceTcpCandidateType,RTCIceTransport,RTCIceTransportState,RTCIdentityAssertion,RTCIdentityErrorEvent,RTCIdentityEvent,RTCInboundRtpStreamStats,RTCNetworkType,RTCOfferAnswerOptions,RTCOfferOptions,RTCOutboundRtpStreamStats,RTCPeerConnection,RTCPeerConnectionIceErrorEvent,RTCPeerConnectionIceEvent,RTCRemoteOutboundRtpStreamStats,RTCRtcpParameters,RTCRtpCapabilities,RTCRtpCodecCapability,RTCRtpCodecParameters,RTCRtpContributingSource,RTCRtpEncodingParameters,RTCRtpParameters,RTCRtpReceiveParameters,RTCRtpReceiver,RTCRtpSendParameters,RTCRtpSender,RTCRtpStreamStats,RTCRtpSynchronizationSource,RTCRtpTransceiver,RTCRtpTransceiverDirection,RTCRtpTransceiverInit,RTCSctpTransport,RTCSessionDescription,RTCSessionDescriptionCallback,RTCStats,RTCStatsIceCandidatePairState,RTCStatsReport,RTCStatsType,RTCTrackEvent,RTCTrackEventInit,RadioNodeList,Range,ReadableByteStreamController,ReadableStream,ReadableStreamBYOBReader,ReadableStreamBYOBRequest,ReadableStreamDefaultController,ReadableStreamDefaultReader,RelativeOrientationSensor,RenderingContext,Report,ReportingObserver,ReportingObserverOptions,Request,RequestDestination,ResizeObserver,ResizeObserverEntry,Response,RsaHashedImportParams,RsaHashedKeyGenParams,RsaOaepParams,RsaPssParams,SVGAElement,SVGAltGlyphDefElement,SVGAltGlyphElement,SVGAltGlyphItemElement,SVGAngle,SVGAnimateColorElement,SVGAnimateElement,SVGAnimateMotionElement,SVGAnimateTransformElement,SVGAnimatedAngle,SVGAnimatedBoolean,SVGAnimatedEnumeration,SVGAnimatedInteger,SVGAnimatedLength,SVGAnimatedLengthList,SVGAnimatedNumber,SVGAnimatedNumberList,SVGAnimatedPoints,SVGAnimatedPreserveAspectRatio,SVGAnimatedRect,SVGAnimatedString,SVGAnimatedTransformList,SVGAnimationElement,SVGCircleElement,SVGClipPathElement,SVGColorProfileElement,SVGComponentTransferFunctionElement,SVGCursorElement,SVGDefsElement,SVGDescElement,SVGElement,SVGEllipseElement,SVGEvent,SVGExternalResourcesRequired,SVGFEBlendElement,SVGFEColorMatrixElement,SVGFEComponentTransferElement,SVGFECompositeElement,SVGFEConvolveMatrixElement,SVGFEDiffuseLightingElement,SVGFEDisplacemeleStreamDefaultController,WritableStreamDefaultWriter,XDomainRequest,XMLDocument,XMLHttpRequest,XMLHttpRequestEventTarget,XMLHttpRequestResponseType,XMLSerializer,XPathEvaluator,XPathException,XPathExpression,XPathNSResolver,XPathResult,XRBoundedReferenceSpace,XREnvironmentBlendMode,XREye,XRFrame,XRFrameRequestCallback,XRHandedness,XRInputSource,XRInputSourceArray,XRInputSourceEvent,XRInputSourceEventInit,XRInputSourcesChangeEvent,XRInputSourcesChangeEventInit,XRPermissionDescriptor,XRPermissionStatus,XRPose,XRReferenceSpace,XRReferenceSpaceEvent,XRReferenceSpaceEventInit,XRReferenceSpaceType,XRRenderState,XRRenderStateInit,XRRigidTransform,XRSession,XRSessionEvent,XRSessionEventInit,XRSessionInit,XRSessionMode,XRSpace,XRSystem,XRTargetRayMode,XRView,XRViewerPose,XRViewport,XRVisibilityState,XRWebGLLayer,XRWebGLLayerInit,XSLTProcessor,MetadataElement,SVGMissingGlyphElement,SVGNumber,SVGNumberList,SVGPathElement,SVGPatternElement,SVGPoint,SVGPolygonElement,SVGPolylineElement,SVGPreserveAspectRatio,SVGRadialGradientElement,SVGRect,SVGRectElement,SVGRenderingIntent,SVGSVGElement,SVGScriptElement,SVGSetElement,SVGSolidcolorElement,SVGStopElement,SVGStringList,SVGStylable,SVGStyleElement,SVGSwitchElement,SVGSymbolElement,SVGTRefElement,SVGTSpanElement,SVGTests,SVGTextContentElement,SVGTextElement,SVGTextPathElement,SVGTextPositioningElement,SVGTitleElement,SVGTransform,SVGTransformList,SVGTransformable,SVGURIReference,SVGUnitTypes,SVGUseElement,SVGVKernElement,SVGViewElement,SVGZoomAndPan,Screen,ScreenOrientation,ScriptProcessorNode,ScrollToOptions,SecurityPolicyViolationEvent,Selection,Sensor,SensorErrorEvent,ServiceWorker,ServiceWorkerContainer,ServiceWorkerGlobalScope,ServiceWorkerMessageEvent,ServiceWorkerRegistration,ServiceWorkerState,ShadowRoot,SharedWorker,SharedWorkerGlobalScope,Slottable,SourceBuffer,SourceBufferList,SpeechGrammar,SpeechGrammarList,SpeechRecognition,SpeechRecognitionAlternative,SpeechRecognitionError,SpeechRecognitionErrorEvent,SpeechRecognitionEvent,SpeechRecognitionResult,SpeechRecognitionResultList,SpeechSynthesis,SpeechSynthesisErrorEvent,SpeechSynthesisEvent,SpeechSynthesisUtterance,SpeechSynthesisVoice,StaticRange,StereoPannerNode,Storage,StorageEstimate,StorageEvent,StorageManager,StorageQuota,StylePropertyMap,StylePropertyMapReadOnly,StyleSheet,StyleSheetList,SubmitEvent,SubtleCrypto,SyncEvent,SyncManager,TaskAttributionTiming,Text,TextDecoder,TextEncoder,TextMetrics,TextRange,TextTrack,TextTrackCue,TextTrackList,TimeEvent,TimeRanges,Touch,TouchEvent,TouchList,TrackDefault,TrackDefaultList,TrackEvent,Transferable,TransformStream,TransitionEvent,TreeWalker,TypeInfo,UIEvent,ULongRange,URL,URLSearchParams,URLUtilsReadOnly,USB,USBAlternateInterface,USBConfiguration,USBDevice,USBEndpoint,USBInTransferResult,USBInterface,USBIsochronousInTransferPacket,USBIsochronousInTransferResult,USBIsochronousOutTransferPacket,USBIsochronousOutTransferResult,USBOutTransferResult,USVString,UserDataHandler,UserProximityEvent,VRDisplay,VRDisplayCapabilities,VRDisplayEvent,VREyeParameters,VRFieldOfView,VRFrameData,VRLayerInit,VRPose,VRStageParameters,VTTCue,VTTRegion,ValidityState,VideoConfiguration,VideoPlaybackQuality,VideoTrack,VideoTrackList,VisualViewport,WEBGL_color_buffer_float,WEBGL_compressed_texture_astc,WEBGL_compressed_texture_atc,WEBGL_compressed_texture_etc,WEBGL_compressed_texture_etc1,WEBGL_compressed_texture_pvrtc,WEBGL_compressed_texture_s3tc,WEBGL_compressed_texture_s3tc_srgb,WEBGL_debug_renderer_info,WEBGL_debug_shaders,WEBGL_depth_texture,WEBGL_draw_buffers,WEBGL_lose_context,WakeLock,WakeLockSentinel,WaveShaperNode,WebGL2RenderingContext,WebGLActiveInfo,WebGLBuffer,WebGLContextEvent,WebGLFramebuffer,WebGLProgram,WebGLQuery,WebGLRenderbuffer,WebGLRenderingContext,WebGLSampler,WebGLShader,WebGLShaderPrecisionFormat,WebGLSync,WebGLTexture,WebGLTransformFeedback,WebGLUniformLocation,WebGLVertexArrayObject,WebKitCSSMatrix,WebSocket,WheelEvent,Window,WindowClient,WindowEventHandlers,WindowOrWorkerGlobalScope,Worker,WorkerGlobalScope,WorkerLocation,WorkerNavigator,Worklet,WritableStream,WritableStreamDefaultController,WritableStreamDefaultWriter,XDomainRequest,XMLDocument,XMLHttpRequest,XMLHttpRequestEventTarget,XMLHttpRequestResponseType,XMLSerializer,XPathEvaluator,XPathException,XPathExpression,XPathNSResolver,XPathResult,XRBoundedReferenceSpace,XREnvironmentBlendMode,XREye,XRFrame,XRFrameRequestCallback,XRHandedness,XRInputSource,XRInputSourceArray,XRInputSourceEvent,XRInputSourceEventInit,XRInputSourcesChangeEvent,XRInputSourcesChangeEventInit,XRPermissionDescriptor,XRPermissionStatus,XRPose,XRReferenceSpace,XRReferenceSpaceEvent,XRReferenceSpaceEventInit,XRReferenceSpaceType,XRRenderState,XRRenderStateInit,XRRigidTransform,XRSession,XRSessionEvent,XRSessionEventInit,XRSessionInit,XRSessionMode,XRSpace,XRSystem,XRTargetRayMode,XRView,XRViewerPose,XRViewport,XRVisibilityState,XRWebGLLayer,XRWebGLLayerInit,XSLTProcessor'.split(',');
+
+				for (var i = 0; i < interfaces.length; i++)
+				{
+					var k = interfaces[i];
+					context[k] = undefined;
+					context['moz' + k] = undefined;
+					context['webkit' + k] = undefined;
+				}
+
+				context.window = undefined;
+				context.document = undefined;
+				context.top = undefined;
+				context.parent = undefined;
+				context.Function = undefined;
+				context.eval = undefined;
+				context.alert = undefined;
+				context.prompt = undefined;
+				context.confirm = undefined;
+
+				try
+				{
+					eval("with (context){~function(){'use strict'; " + script + "}()}");
+				} catch(e)
+				{
+					var line = -1;
+
+					if (e.line)
+					{
+						line = e.line;
+					} else if (e.lineNumber)
+					{
+						line = e.lineNumber;
+					} else if (e.stack)
+					{
+						var match = e.stack.split("\n")[0].match(/\:(\d):/);
+
+						if (match)
+						{
+							line = match[1];
+						}
+					}
+
+					error_callback(line, e.message);
+
+					throw e;
+				}
+			}
+
+			var API =
+			{
+				'inddd': function() { console.log(this); console.log('test'); }
+			};
+
+			Caret.ready( function()
+			{
+				var caret = new Caret(Caret.find('.caret')[0]);
+
+				caret.onupdate = function()
+				{
+					caret.clear_errors();
+
+					sandbox(this._textarea.value, API, function(line, message) { caret.error(line, message); });
+				};
+
+				caret.init();
+			});
+		</script>
+	</head>
+<body>
+	<div class="caret-wrapper"><textarea class="caret" cols="80" rows="40"></textarea></div>
+</body>
+</html>
