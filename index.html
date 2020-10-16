@@ -50,6 +50,7 @@
 					this._errors = {};
 					this._timeout = null;
 					this._value = '';
+					this._strip_html_div = null;
 
 					return this;
 				};
@@ -121,8 +122,10 @@
 						}
 					}
 
-					self._listen();
-					self._update();
+					this._strip_html_div = document.createElement('div');
+
+					this._listen();
+					this._update();
 				};
 
 				Caret.prototype._process_background = function()
@@ -182,12 +185,18 @@
 						this._output.innerHTML = (this._linenumbers ? '<span class="caret-line">' : '') + content.split("\n").join((this._linenumbers ? '&nbsp;</span><br /><span class="caret-line">' : '<br />')) + (this._linenumbers ? '&nbsp;</span>' : '');
 
 						var lines = this._output.getElementsByClassName('caret-line');
+						var line = '';
 
 						for (var k in this._errors)
 						{
 							if (k <= lines.length)
 							{
-								lines[k - 1].innerHTML += '<span class="caret-error">' + this._errors[k] + '</span>';
+								line = this._errors[k].replace(/[\x26\x0A\<>'"]/g, function(c) { return '&#' + c.charCodeAt(0); }).trim();
+
+								if (line.length > 0)
+								{
+									lines[k - 1].innerHTML += '<span class="caret-error">' + line + '</span>';
+								}
 							}
 						}
 
