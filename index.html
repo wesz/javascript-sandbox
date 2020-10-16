@@ -170,7 +170,7 @@
 								{
 									return '<span class="caret-keyword">' + match.replace(/./gm, function(s)
 									{
-										return "&#" + s.charCodeAt(0) + ";";
+										return '&#' + s.charCodeAt(0) + ';';
 									}) + '</span>';
 								}
 							);
@@ -178,7 +178,7 @@
 						{
 							content = content.replace(/./gm, function(s)
 							{
-								return "&#" + s.charCodeAt(0) + ";";
+								return '&#' + s.charCodeAt(0) + ';';
 							});
 						}
 
@@ -191,7 +191,10 @@
 						{
 							if (k <= lines.length)
 							{
-								line = this._errors[k].replace(/[\x26\x0A\<>'"]/g, function(c) { return '&#' + c.charCodeAt(0); }).trim();
+								line = this._errors[k].replace(/./gm, function(s)
+								{
+									return '&#' + s.charCodeAt(0) + ';';
+								}).trim();
 
 								if (line.length > 0)
 								{
