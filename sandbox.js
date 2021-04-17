@@ -8,12 +8,13 @@ function Sandbox(code, api)
 	this.params = { Object: true };
 	this.natives = [ Object, Array, RegExp, String, Boolean, Date ];
 	this.eval = eval;
-	this.freeze = Object.prototype.freeze;
-	this.seal = Object.prototype.seal;
+	this.freeze = Object.freeze;
+	this.seal = Object.seal;
 	this.defineproperty = Object.prototype.defineProperty;
 	this.defineproperties = Object.prototype.defineProperty;
 	this.definesetter = Object.__proto__.__defineSetter__;
 	this.definegetter = Object.__proto__.__defineGetter__;
+	this.indexOf = String.prototype.indexOf;
 	this.bind = Object.prototype.bind;
 	this.map = Array.prototype.map;
 	this.filter = Array.prototype.filter;
@@ -50,6 +51,11 @@ function Sandbox(code, api)
 	{
 		delete self.params[a];
 	});
+
+	for (var native in this.natives)
+	{
+		Object.freeze(native.prototype);
+	}
 
 	// prevent usage of async keyword
 	if (this.code.indexOf('async') != -1)
@@ -121,9 +127,9 @@ Sandbox.prototype.init = function()
 	Function.prototype.constructor = null;
 
 	eval = null;
-	Object.prototype.freeze = null;
+	Object.freeze = null;
 	({}).constructor.freeze = null;
-	Object.prototype.seal = null;
+	Object.seal = null;
 	({}).constructor.seal = null;
 	Object.prototype.defineProperty = null;
 	({}).constructor.defineProperty = null;
@@ -140,9 +146,9 @@ Sandbox.prototype.flush = function()
 	Function.prototype.constructor = Function;
 
 	eval = this.eval;
-	Object.prototype.freeze = this.freeze;
+	Object.freeze = this.freeze;
 	({}).constructor.freeze = this.freeze;
-	Object.prototype.seal = this.seal;
+	Object.seal = this.seal;
 	({}).constructor.seal = this.seal;
 	Object.prototype.defineProperty = this.defineproperty;
 	({}).constructor.defineProperty = this.defineproperty;
@@ -153,6 +159,7 @@ Sandbox.prototype.flush = function()
 	Object.__proto__.__defineGetter__ = this.definegetter;
 	({}).__proto__.__defineGetter__ = this.definegetter;
 
+	String.prototype.indexOf = this.indexOf;
 	Object.prototype.bind = this.bind;
 	Array.prototype.map = this.map;
 	Array.prototype.filter = this.filter;
