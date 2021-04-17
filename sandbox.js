@@ -14,6 +14,9 @@ function Sandbox(code, api)
 	this.defineproperties = Object.prototype.defineProperty;
 	this.definesetter = Object.__proto__.__defineSetter__;
 	this.definegetter = Object.__proto__.__defineGetter__;
+	this.bind = Object.prototype.bind;
+	this.map = Array.prototype.map;
+	this.filter = Array.prototype.filter;
 
 	('__defineGetter__,__defineSetter__,__proto__' + Object.getOwnPropertyNames(__proto__) + Object.getOwnPropertyNames(window)).split(',').sort().map( function(a)
 	{
@@ -54,6 +57,20 @@ function Sandbox(code, api)
 		this.valid = false;
 
 		throw 'async!';
+	}
+
+	if (this.code.indexOf('import') != -1)
+	{
+		this.valid = false;
+
+		throw 'import!';
+	}
+
+	if (this.code.indexOf('class') != -1)
+	{
+		this.valid = false;
+
+		throw 'class!';
 	}
 
 	// prevent GeneratorFunction syntax
@@ -135,4 +152,8 @@ Sandbox.prototype.flush = function()
 	({}).__proto__.__defineSetter__ = this.definesetter;
 	Object.__proto__.__defineGetter__ = this.definegetter;
 	({}).__proto__.__defineGetter__ = this.definegetter;
+
+	Object.prototype.bind = this.bind;
+	Array.prototype.map = this.map;
+	Array.prototype.filter = this.filter;
 };
