@@ -96,6 +96,8 @@ function Sandbox(code, api)
 		this.sandbox = Function(Object.keys(this.params).filter(/./.test, /^[\w\$]+$/), '\'use strict\';' + this.code);
 	} catch(e)
 	{
+		this.flush();
+
 		throw e;
 	}
 
@@ -116,6 +118,8 @@ Sandbox.prototype.exec = function()
 		this.sandbox.call(this.object);
 	} catch(e)
 	{
+		this.flush();
+
 		throw e;
 	}
 
@@ -127,8 +131,10 @@ Sandbox.prototype.init = function()
 	Function.prototype.constructor = null;
 
 	eval = null;
-	Object.prototype.freeze = null;
-	Object.prototype.seal = null;
+
+	Object.freeze = null;
+	Object.seal = null;
+
 	Object.prototype.defineProperty = null;
 	({}).constructor.defineProperty = null;
 	Object.prototype.defineProperties = null;
@@ -144,8 +150,10 @@ Sandbox.prototype.flush = function()
 	Function.prototype.constructor = Function;
 
 	eval = this.eval;
-	Object.prototype.freeze = this.freeze;
-	Object.prototype.seal = this.seal;
+
+	Object.freeze = this.freeze;
+	Object.seal = this.seal;
+
 	Object.prototype.defineProperty = this.defineproperty;
 	({}).constructor.defineProperty = this.defineproperty;
 	Object.prototype.defineProperties = this.defineproperties;
