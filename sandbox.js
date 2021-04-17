@@ -52,9 +52,9 @@ function Sandbox(code, api)
 		delete self.params[a];
 	});
 
-	for (var native in this.natives)
+	for (var i = 0; i < this.natives.length; i++)
 	{
-		Object.freeze(native.prototype);
+		Object.freeze(this.natives[i].prototype);
 	}
 
 	// prevent usage of async keyword
@@ -127,10 +127,8 @@ Sandbox.prototype.init = function()
 	Function.prototype.constructor = null;
 
 	eval = null;
-	Object.freeze = null;
-	({}).constructor.freeze = null;
-	Object.seal = null;
-	({}).constructor.seal = null;
+	Object.prototype.freeze = null;
+	Object.prototype.seal = null;
 	Object.prototype.defineProperty = null;
 	({}).constructor.defineProperty = null;
 	Object.prototype.defineProperties = null;
@@ -146,10 +144,8 @@ Sandbox.prototype.flush = function()
 	Function.prototype.constructor = Function;
 
 	eval = this.eval;
-	Object.freeze = this.freeze;
-	({}).constructor.freeze = this.freeze;
-	Object.seal = this.seal;
-	({}).constructor.seal = this.seal;
+	Object.prototype.freeze = this.freeze;
+	Object.prototype.seal = this.seal;
 	Object.prototype.defineProperty = this.defineproperty;
 	({}).constructor.defineProperty = this.defineproperty;
 	Object.prototype.defineProperties = this.defineproperties;
